@@ -8,11 +8,11 @@
 
 ## 2. Artifact System
 
-- [ ] 2.1 Define the Artifact type with `type`, `content`, `metadata`, and scope+id identity
-- [ ] 2.2 Implement SQLite-backed artifact store with write and read-by-(scope,id); not-found signals on missing read
-- [ ] 2.3 Implement `artifact://scope/id` reference parsing and resolution from the store; fail fast on missing reference
-- [ ] 2.4 Implement artifact compression (size-threshold → summary), keeping the original artifact retrievable unchanged
-- [ ] 2.5 Tests: store round-trip, missing-read not-found, reference resolve + fail-fast, compression shrinks tokens and preserves original
+- [x] 2.1 Define the Artifact type with `type`, `content`, `metadata`, and scope+id identity
+- [x] 2.2 Implement SQLite-backed artifact store with write and read-by-(scope,id); not-found signals on missing read
+- [x] 2.3 Implement `artifact://scope/id` reference parsing and resolution from the store; fail fast on missing reference
+- [x] 2.4 Implement artifact compression (size-threshold → summary), keeping the original artifact retrievable unchanged
+- [x] 2.5 Tests: store round-trip, missing-read not-found, reference resolve + fail-fast, compression shrinks tokens and preserves original
 
 ## 3. Session Runtime
 
