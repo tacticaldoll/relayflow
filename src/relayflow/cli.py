@@ -15,9 +15,10 @@ import sys
 
 from relayflow import __version__
 from relayflow.artifact import ArtifactStore
-from relayflow.demo import MarkerRelayTask, marker_responder
+from relayflow.demo import MarkerRelayTask, build_marker_graph, marker_responder
 from relayflow.falsification import run_experiment_matrix, run_task
 from relayflow.firewall import Budget
+from relayflow.graph import run_graph, visualize
 from relayflow.llm import MockLLM
 from relayflow.session import SessionNotFound, SessionStore
 
@@ -53,6 +54,10 @@ def build_parser() -> argparse.ArgumentParser:
     inspect.add_argument("session_id")
     inspect.add_argument("--db", default=DEFAULT_DB)
     inspect.set_defaults(func=cmd_inspect)
+
+    graph = sub.add_parser("graph", help="run the demo session graph and visualize")
+    graph.add_argument("--budget", type=int, default=60)
+    graph.set_defaults(func=cmd_graph)
 
     return parser
 
@@ -109,6 +114,21 @@ def cmd_inspect(args: argparse.Namespace) -> int:
     for ref in record.artifacts:
         print(f"  - {ref}")
     return 0
+
+
+def cmd_graph(args: argparse.Namespace) -> int:
+    task = MarkerRelayTask()
+    artifacts = ArtifactStore()
+    task.setup(artifacts)
+    graph = build_marker_graph(task, Budget(max_tokens=args.budget))
+    result = run_graph(graph, artifacts, MockLLM(responder=marker_responder))
+    print(visualize(graph))
+    print(f"completed={result.completed}")
+    if result.failed:
+        print(f"failed={result.failed}")
+    if result.blocked:
+        print(f"blocked={result.blocked}")
+    return 0 if not result.failed and not result.blocked else 1
 
 
 def main(argv: list[str] | None = None) -> int:

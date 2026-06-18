@@ -18,6 +18,7 @@ from dataclasses import dataclass
 
 from relayflow.artifact import Artifact, ArtifactStore
 from relayflow.firewall import Budget, ContextPolicy
+from relayflow.graph import SessionGraph
 from relayflow.session import SessionContext, SessionInput, SessionResult
 
 MARKER_RE = re.compile(r"^m\d{3}$")
@@ -112,3 +113,40 @@ class MarkerRelayTask:
     def is_complete(self, artifacts: ArtifactStore, result: SessionResult) -> bool:
         final = artifacts.resolve(result.output.artifacts[-1]).content
         return set(self._all_markers()) <= set(extract_markers(final))
+
+    def graph_steps(self, budget: Budget) -> list[SessionInput]:
+        """Like ``relay_steps`` but the sink depends on explicit extract refs.
+
+        Explicit input references let the Session Graph derive edges (extract
+        nodes -> synthesis) rather than relying on a tagged-policy sweep.
+        """
+        extracts = [
+            SessionInput(
+                id=f"extract{g}",
+                purpose="extract markers from this group",
+                context=SessionContext(scope=self.scope, inputs=[self._group_ref(g)]),
+                budget=budget,
+            )
+            for g in range(self.num_groups)
+        ]
+        synthesis = SessionInput(
+            id="synthesis",
+            purpose="combine extracted markers",
+            context=SessionContext(
+                scope=self.scope,
+                inputs=[
+                    f"artifact://{self.scope}/extract{g}.out"
+                    for g in range(self.num_groups)
+                ],
+            ),
+            budget=budget,
+        )
+        return [*extracts, synthesis]
+
+
+def build_marker_graph(task: MarkerRelayTask, budget: Budget) -> SessionGraph:
+    """Build a Session Graph for the marker task: extract nodes -> synthesis."""
+    graph = SessionGraph()
+    for step in task.graph_steps(budget):
+        graph.add_node(step)
+    return graph
