@@ -1,11 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
-name = "python-openspec-starter"
+name = "relayflow"
 version = "0.1.0"
+description = "Advance large tasks under bounded context via Artifact Relay"
 requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+relayflow = "relayflow.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/relayflow"]
 
 [tool.ruff]
 line-length = 88
 target-version = "py312"
+src = ["src", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]

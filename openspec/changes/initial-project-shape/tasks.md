@@ -1,10 +1,10 @@
 ## 1. Project Shape
 
-- [ ] 1.1 Rename project metadata to RelayFlow in `pyproject.toml` and `openspec/config.yaml` (`project: relayflow`)
-- [ ] 1.2 Rewrite `README.md` to describe RelayFlow (purpose + link to `docs/vision.md`), replacing starter text
-- [ ] 1.3 Create `src/relayflow/` package layout with `__init__.py` and module skeletons (`session`, `artifact`, `firewall`, `falsification`, `cli`)
-- [ ] 1.4 Configure `relayflow` console-script entry point in `pyproject.toml`
-- [ ] 1.5 Make Definition of Done runnable from module root: test, lint, format commands wired and passing on the empty skeleton
+- [x] 1.1 Rename project metadata to RelayFlow in `pyproject.toml` and `openspec/config.yaml` (`project: relayflow`)
+- [x] 1.2 Rewrite `README.md` to describe RelayFlow (purpose + link to `docs/vision.md`), replacing starter text
+- [x] 1.3 Create `src/relayflow/` package layout with `__init__.py` and module skeletons (`session`, `artifact`, `firewall`, `falsification`, `cli`)
+- [x] 1.4 Configure `relayflow` console-script entry point in `pyproject.toml`
+- [x] 1.5 Make Definition of Done runnable from module root: test, lint, format commands wired and passing on the empty skeleton
 
 ## 2. Artifact System
 

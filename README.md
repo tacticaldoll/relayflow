@@ -1,42 +1,46 @@
-# python-openspec-starter
+# RelayFlow
 
-An opinionated starter for Python projects that use OpenSpec, ADRs, conventional
-commits, and AI-agent-friendly governance from day one.
+Advance a large task through multiple **context-bounded short sessions** that
+pass **artifacts** to one another, with a **Context Firewall** controlling how
+much information enters each step.
 
-This repository is intentionally small. It provides the process skeleton for a
-new project, not product-specific architecture.
+RelayFlow does not bet that "AI can remember more." It bets that **AI can keep
+advancing large work under bounded context, by relaying artifacts**.
 
-## Use
+The full vision, layered backlog (V0/V1/V2), and the self-falsification metric
+live in [docs/vision.md](docs/vision.md). The project contract is in
+[PROJECT.md](PROJECT.md).
 
-1. Create a new repository from this starter.
-2. Replace placeholder project metadata in `PROJECT.md`, `README.md`, and
-   `pyproject.toml`.
-3. Install or expose the OpenSpec CLI in your shell.
-4. Generate local agent shims for your editor or agent:
+## Status
 
-   ```bash
-   openspec init --tools codex
-   # or: openspec init --tools claude,cursor,github-copilot
-   ```
+V0 — Core PoC. The goal is to prove the core bet, not to ship a framework.
+Deliberately out of scope until V2+: Memory, Vector DB / RAG, Multi-Agent,
+Knowledge Base, and autonomous task planning.
 
-5. Start the first project-specific change with OpenSpec:
+## Core bet (falsifiable)
 
-   ```bash
-   openspec new change "initial-project-shape"
-   ```
+A large task can be split into short sessions, each with a bounded context, that
+relay artifacts to completion — while no single session ever holds the whole
+task's context. RelayFlow proves this by toggling relay **off** (a degenerate
+single-session run on the same code path) and comparing the same task under a
+bounded budget:
 
-   This change should replace placeholders, choose the real package layout, add
-   the first specs, and make the Python Definition of Done runnable.
+| mode | budget | expected |
+| --- | --- | --- |
+| relay off | unbounded | completes, large context (measures `single_shot_tokens`) |
+| relay off | bounded | fails / truncated |
+| relay on | bounded | completes with `peak_session_tokens` within budget |
 
-## Included
+## Development
 
-- `AGENTS.md` - repository rules for AI coding agents and humans.
-- `PROJECT.md` - project-specific contract, terminology, and priorities.
-- `docs/development-flow.md` - short OpenSpec and commit checklist.
-- `docs/adr/` - architecture decision record skeleton.
-- `openspec/` - empty OpenSpec structure ready for specs and changes.
-- A Python project policy anchor in `pyproject.toml`. It intentionally has no
-  packages until the first project-specific change chooses the real layout.
+This project is spec-driven via OpenSpec. See [AGENTS.md](AGENTS.md) and
+[docs/development-flow.md](docs/development-flow.md).
 
-Generated agent shims such as `.codex/` and `.claude/` are per-clone local
-files and should not be committed.
+Definition of Done, run from the repo root:
+
+```bash
+python -m compileall .
+python -m pytest
+python -m ruff check .
+python -m ruff format --check .
+```
