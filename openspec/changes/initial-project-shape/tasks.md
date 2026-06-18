@@ -33,11 +33,11 @@
 
 ## 5. Relay Falsification
 
-- [ ] 5.1 Implement relay toggle: relay-off as degenerate config (`N=1`, `budget=∞`, single node) sharing the same code path
-- [ ] 5.2 Implement token metering: `peak_session_tokens` across sessions; `single_shot_tokens` from a relay-off unbounded run
-- [ ] 5.3 Implement acceptance check producing a `complete` / `not-complete` verdict for a run
-- [ ] 5.4 Implement the three-cell experiment matrix runner and result report
-- [ ] 5.5 Tests (mock LLM): matrix shows cell-2 fails, cell-3 completes with `peak ≤ B`, and `peak ≤ B < single_shot`
+- [x] 5.1 Implement relay toggle: relay-off as degenerate config (`N=1`, `budget=∞`, single node) sharing the same code path
+- [x] 5.2 Implement token metering: `peak_session_tokens` across sessions; `single_shot_tokens` from a relay-off unbounded run
+- [x] 5.3 Implement acceptance check producing a `complete` / `not-complete` verdict for a run
+- [x] 5.4 Implement the three-cell experiment matrix runner and result report
+- [x] 5.5 Tests (mock LLM): matrix shows cell-2 fails, cell-3 completes with `peak ≤ B`, and `peak ≤ B < single_shot`
 
 ## 6. CLI & Inspect
 
