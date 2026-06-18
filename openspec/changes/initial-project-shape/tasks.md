@@ -25,11 +25,11 @@
 
 ## 4. Context Firewall
 
-- [ ] 4.1 Implement the four-stage assembly pipeline as the single context entry point: Selection → Reference → Compression → Budget
-- [ ] 4.2 Implement context policy: `latest` and `tagged` selection (no `relevant`)
-- [ ] 4.3 Implement Budget stage: hard `max_tokens` ceiling with truncation; pass-through when already within budget
-- [ ] 4.4 Implement scope distillation: free-form request → explicit scope artifact (referenceable)
-- [ ] 4.5 Tests: pipeline order + within-budget result, latest/tagged selection, oversized truncation, distillation produces scope artifact
+- [x] 4.1 Implement the four-stage assembly pipeline as the single context entry point: Selection → Reference → Compression → Budget
+- [x] 4.2 Implement context policy: `latest` and `tagged` selection (no `relevant`)
+- [x] 4.3 Implement Budget stage: hard `max_tokens` ceiling with truncation; pass-through when already within budget
+- [x] 4.4 Implement scope distillation: free-form request → explicit scope artifact (referenceable)
+- [x] 4.5 Tests: pipeline order + within-budget result, latest/tagged selection, oversized truncation, distillation produces scope artifact
 
 ## 5. Relay Falsification
 
