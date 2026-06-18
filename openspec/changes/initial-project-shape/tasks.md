@@ -48,6 +48,6 @@
 
 ## 7. End-to-End PoC
 
-- [ ] 7.1 Build the V0 demo task (e.g. analyze a large input → Scope → Findings → Report) wired through the relay
-- [ ] 7.2 Run the experiment matrix on the demo and confirm `peak_session_tokens ≤ budget < single_shot_tokens` with relay-on completing
-- [ ] 7.3 Update `PROJECT.md` if any contract detail drifted during implementation
+- [x] 7.1 Build the V0 demo task (e.g. analyze a large input → Scope → Findings → Report) wired through the relay
+- [x] 7.2 Run the experiment matrix on the demo and confirm `peak_session_tokens ≤ budget < single_shot_tokens` with relay-on completing
+- [x] 7.3 Update `PROJECT.md` if any contract detail drifted during implementation (verified: no drift)
