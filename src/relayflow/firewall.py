@@ -12,7 +12,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from relayflow.artifact import Artifact, ArtifactStore, compress, should_compress
+from relayflow.artifact import (
+    Artifact,
+    ArtifactStore,
+    compress,
+    resolve_all,
+    should_compress,
+)
 from relayflow.llm import LLMClient
 from relayflow.tokens import count_tokens, truncate_to_tokens
 
@@ -59,15 +65,24 @@ def assemble(
     policy: ContextPolicy,
     budget: Budget,
     *,
+    explicit_refs: list[str] | None = None,
     preamble: str = "",
     compression_threshold: int | None = None,
     summary_tokens: int | None = None,
 ) -> AssembledContext:
-    """Run the four-stage pipeline and return the assembled context."""
+    """Run the four-stage pipeline and return the assembled context.
+
+    When ``explicit_refs`` is given, Selection is those references (resolved
+    fail-fast) and ``policy`` is ignored; otherwise the policy selects from
+    ``scope``.
+    """
     stages: list[str] = []
 
     # 1. Selection — choose which artifacts enter.
-    selected = policy.select(store, scope)
+    if explicit_refs is not None:
+        selected = resolve_all(store, explicit_refs)
+    else:
+        selected = policy.select(store, scope)
     stages.append("selection")
 
     # 2. Reference — artifacts are carried by reference, resolved here.

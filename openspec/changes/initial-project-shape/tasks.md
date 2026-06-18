@@ -16,12 +16,12 @@
 
 ## 3. Session Runtime
 
-- [ ] 3.1 Define Session input (`id`, `purpose`, `context`, `constraints`, `budget.max_tokens`) with validation (reject missing budget)
-- [ ] 3.2 Define Session output contract (`summary`, `artifacts` as references, `next_actions`)
-- [ ] 3.3 Define `LLMClient` interface and a deterministic mock implementation for tests/falsification
-- [ ] 3.4 Implement session execution: assemble context (via firewall) → call client → persist + emit output
-- [ ] 3.5 Implement persistence (SQLite) of `input`/`output`/artifact references; assert reasoning is NOT stored
-- [ ] 3.6 Tests: required-field validation, output contract shape, persistence excludes reasoning
+- [x] 3.1 Define Session input (`id`, `purpose`, `context`, `constraints`, `budget.max_tokens`) with validation (reject missing budget)
+- [x] 3.2 Define Session output contract (`summary`, `artifacts` as references, `next_actions`)
+- [x] 3.3 Define `LLMClient` interface and a deterministic mock implementation for tests/falsification
+- [x] 3.4 Implement session execution: assemble context (via firewall) → call client → persist + emit output
+- [x] 3.5 Implement persistence (SQLite) of `input`/`output`/artifact references; assert reasoning is NOT stored
+- [x] 3.6 Tests: required-field validation, output contract shape, persistence excludes reasoning
 
 ## 4. Context Firewall
 
