@@ -41,10 +41,10 @@
 
 ## 6. CLI & Inspect
 
-- [ ] 6.1 Implement `relayflow inspect <session-id>`: read-only trace replay of persisted input/output/artifacts, no model call
-- [ ] 6.2 Implement non-zero exit + not-found message for unknown session id
-- [ ] 6.3 Wire a CLI entry to run a task (relay on/off) and to run the experiment matrix
-- [ ] 6.4 Tests: inspect replays without model call, unknown-id error path
+- [x] 6.1 Implement `relayflow inspect <session-id>`: read-only trace replay of persisted input/output/artifacts, no model call
+- [x] 6.2 Implement non-zero exit + not-found message for unknown session id
+- [x] 6.3 Wire a CLI entry to run a task (relay on/off) and to run the experiment matrix
+- [x] 6.4 Tests: inspect replays without model call, unknown-id error path
 
 ## 7. End-to-End PoC
 

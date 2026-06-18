@@ -12,3 +12,29 @@ def test_main_no_args_prints_help_and_exits_zero(capsys):
     assert main([]) == 0
     out = capsys.readouterr().out
     assert "relayflow" in out
+
+
+def test_matrix_command_reports_bet_holds(capsys):
+    assert main(["matrix", "--budget", "60"]) == 0
+    out = capsys.readouterr().out
+    assert "bet_holds=True" in out
+    assert "relay-off/bounded" in out
+
+
+def test_run_then_inspect_replays_without_model(tmp_path, capsys):
+    db = str(tmp_path / "store.db")
+    assert main(["run", "--db", db, "--budget", "60"]) == 0
+    capsys.readouterr()  # drain run output
+
+    # inspect a persisted session: replays recorded trace, exits zero
+    assert main(["inspect", "synthesis", "--db", db]) == 0
+    out = capsys.readouterr().out
+    assert "session: synthesis" in out
+    assert "artifact://demo/synthesis.out" in out
+
+
+def test_inspect_unknown_session_exits_nonzero(tmp_path, capsys):
+    db = str(tmp_path / "empty.db")
+    assert main(["inspect", "nope", "--db", db]) == 1
+    err = capsys.readouterr().err
+    assert "session not found" in err
