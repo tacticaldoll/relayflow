@@ -18,6 +18,7 @@ from relayflow.artifact import ArtifactStore
 from relayflow.demo import (
     MarkerRelayTask,
     build_marker_graph,
+    build_mixed_graph,
     demo_execution,
     marker_responder,
 )
@@ -63,6 +64,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     graph = sub.add_parser("graph", help="run the demo session graph and visualize")
     graph.add_argument("--budget", type=int, default=60)
+    graph.add_argument(
+        "--mixed", action="store_true", help="run the session->execution mixed graph"
+    )
     graph.set_defaults(func=cmd_graph)
 
     execute = sub.add_parser("execute", help="run the demo executor (patch + tests)")
@@ -126,10 +130,13 @@ def cmd_inspect(args: argparse.Namespace) -> int:
 
 
 def cmd_graph(args: argparse.Namespace) -> int:
-    task = MarkerRelayTask()
     artifacts = ArtifactStore()
-    task.setup(artifacts)
-    graph = build_marker_graph(task, Budget(max_tokens=args.budget))
+    if args.mixed:
+        graph = build_mixed_graph()
+    else:
+        task = MarkerRelayTask()
+        task.setup(artifacts)
+        graph = build_marker_graph(task, Budget(max_tokens=args.budget))
     result = run_graph(graph, artifacts, MockLLM(responder=marker_responder))
     print(visualize(graph))
     print(f"completed={result.completed}")

@@ -153,6 +153,32 @@ def build_marker_graph(task: MarkerRelayTask, budget: Budget) -> SessionGraph:
     return graph
 
 
+def build_mixed_graph() -> SessionGraph:
+    """A heterogeneous graph: a session 'plan' feeds an execution 'impl'.
+
+    Demonstrates session and execution nodes coexisting, with the execution
+    depending on the session's artifact and gated on its tests.
+    """
+    graph = SessionGraph()
+    graph.add_node(
+        SessionInput(
+            id="plan",
+            purpose="plan the change",
+            context=SessionContext(scope="mixed"),
+            budget=Budget(max_tokens=100),
+        )
+    )
+    executor, _ = demo_execution()
+    spec = ExecSpec(
+        id="impl",
+        scope="mixed",
+        instruction="implement the plan under src/",
+        allowed_paths=["src/"],
+    )
+    graph.add_execution(spec, executor, deps=["artifact://mixed/plan.out"])
+    return graph
+
+
 def demo_execution() -> tuple[MockExecutor, ExecSpec]:
     """A deterministic in-scope execution: add a function under ``src/``."""
     spec = ExecSpec(

@@ -46,6 +46,13 @@ def test_graph_command_runs_demo_graph(capsys):
     assert "synthesis [done]" in out
 
 
+def test_graph_mixed_command_runs(capsys):
+    assert main(["graph", "--mixed"]) == 0
+    out = capsys.readouterr().out
+    assert "impl [done]" in out
+    assert "plan -> impl" in out
+
+
 def test_execute_command_runs_demo_executor(capsys):
     assert main(["execute"]) == 0
     out = capsys.readouterr().out

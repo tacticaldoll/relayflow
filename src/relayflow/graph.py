@@ -1,21 +1,25 @@
-"""Session Graph: sessions as nodes, artifacts as edges, advanced by a scheduler.
+"""Session Graph: sessions and executions as nodes, artifacts as edges.
 
-The graph generalizes V0's linear relay to a DAG. A node is ready only when all
-of its input artifacts exist and are accepted; the ready set is recomputed from
-graph + artifact state each tick rather than stored. An acceptance gate stops a
-bad artifact from propagating: a rejected artifact regenerates its node up to a
-bounded number of attempts, and dependents stay blocked until inputs are accepted.
+The graph generalizes V0's linear relay to a DAG. A node wraps a unit of *work*
+(a session or an execution); the scheduler is work-agnostic. A node is ready only
+when all of its input artifacts exist and are accepted; the ready set is
+recomputed from graph + artifact state each tick rather than stored. An
+acceptance gate stops a bad artifact from propagating: a rejected artifact
+regenerates its node up to a bounded number of attempts, and dependents stay
+blocked until inputs are accepted.
 
-This is synchronous and single-process by design — concurrency, retries-as-jobs,
-and any execution substrate (worklane) are a separate, later change.
+Synchronous and single-process by design — concurrency, retries-as-jobs, and any
+execution substrate (worklane) are a separate, later change.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
 
 from relayflow.artifact import Artifact, ArtifactNotFound, ArtifactStore
+from relayflow.executor import ExecSpec, Executor, FileScopeViolation, run_execution
 from relayflow.llm import LLMClient
 from relayflow.session import SessionInput, SessionStore, run_session
 
@@ -33,23 +37,125 @@ def accept_all(_artifact: Artifact) -> bool:
     return True
 
 
+@runtime_checkable
+class NodeWork(Protocol):
+    """A unit of graph work: produces a primary output artifact and is judged."""
+
+    @property
+    def id(self) -> str: ...
+
+    @property
+    def scope(self) -> str: ...
+
+    @property
+    def input_refs(self) -> list[str]: ...
+
+    @property
+    def output_ref(self) -> str: ...
+
+    def run(
+        self,
+        store: ArtifactStore,
+        *,
+        llm: LLMClient | None,
+        executor: Executor | None,
+        sessions: SessionStore | None,
+    ) -> bool:
+        """Run the work once. Return False if the attempt failed structurally."""
+
+    def accepted(self, store: ArtifactStore, acceptor: Acceptor) -> bool:
+        """Whether this node's produced output is accepted."""
+
+
 @dataclass
-class GraphNode:
+class SessionWork:
     session: SessionInput
-    status: str = PENDING
-    attempts: int = 0
 
     @property
     def id(self) -> str:
         return self.session.id
 
     @property
-    def output_ref(self) -> str:
-        return f"artifact://{self.session.context.scope}/{self.session.id}.out"
+    def scope(self) -> str:
+        return self.session.context.scope
 
     @property
     def input_refs(self) -> list[str]:
         return list(self.session.context.inputs)
+
+    @property
+    def output_ref(self) -> str:
+        return f"artifact://{self.scope}/{self.id}.out"
+
+    def run(self, store, *, llm, executor, sessions) -> bool:
+        if llm is None:
+            raise ValueError(f"session node {self.id!r} requires an llm")
+        run_session(store, llm, self.session, sessions)
+        return True
+
+    def accepted(self, store, acceptor) -> bool:
+        return acceptor(store.resolve(self.output_ref))
+
+
+@dataclass
+class ExecutionWork:
+    spec: ExecSpec
+    executor: Executor
+    deps: list[str]
+
+    @property
+    def id(self) -> str:
+        return self.spec.id
+
+    @property
+    def scope(self) -> str:
+        return self.spec.scope
+
+    @property
+    def input_refs(self) -> list[str]:
+        return list(self.deps)
+
+    @property
+    def output_ref(self) -> str:
+        return f"artifact://{self.scope}/{self.id}.patch"
+
+    @property
+    def test_ref(self) -> str:
+        return f"artifact://{self.scope}/{self.id}.test"
+
+    def run(self, store, *, llm, executor, sessions) -> bool:
+        worker = executor if executor is not None else self.executor
+        try:
+            run_execution(store, worker, self.spec)
+        except FileScopeViolation:
+            return False
+        return True
+
+    def accepted(self, store, acceptor) -> bool:
+        try:
+            test = store.resolve(self.test_ref)
+        except ArtifactNotFound:
+            return False
+        return test.metadata.get("status") == "passed"
+
+
+@dataclass
+class GraphNode:
+    work: NodeWork
+    status: str = PENDING
+    attempts: int = 0
+
+    @property
+    def id(self) -> str:
+        return self.work.id
+
+    @property
+    def output_ref(self) -> str:
+        return self.work.output_ref
+
+    @property
+    def input_refs(self) -> list[str]:
+        return self.work.input_refs
 
 
 @dataclass
@@ -61,13 +167,24 @@ class GraphRunResult:
 
 
 class SessionGraph:
-    """A DAG of session nodes. Edges are derived from input references."""
+    """A DAG of work nodes. Edges are derived from input references."""
 
     def __init__(self) -> None:
         self.nodes: dict[str, GraphNode] = {}
 
     def add_node(self, session: SessionInput) -> GraphNode:
-        node = GraphNode(session=session)
+        return self._add(SessionWork(session=session))
+
+    def add_execution(
+        self,
+        spec: ExecSpec,
+        executor: Executor,
+        deps: list[str] | None = None,
+    ) -> GraphNode:
+        return self._add(ExecutionWork(spec=spec, executor=executor, deps=deps or []))
+
+    def _add(self, work: NodeWork) -> GraphNode:
+        node = GraphNode(work=work)
         self.nodes[node.id] = node
         return node
 
@@ -78,7 +195,6 @@ class SessionGraph:
         return None
 
     def dependencies(self, node: GraphNode) -> list[GraphNode]:
-        """Producer nodes this node depends on (external refs are not nodes)."""
         deps = []
         for ref in node.input_refs:
             producer = self.producer_of(ref)
@@ -90,7 +206,6 @@ class SessionGraph:
         return [n for n in self.nodes.values() if not self.dependencies(n)]
 
     def edges(self) -> list[tuple[str, str]]:
-        """(producer_id, consumer_id) pairs."""
         result = []
         for node in self.nodes.values():
             for dep in self.dependencies(node):
@@ -115,11 +230,9 @@ def _ready(
     for ref in node.input_refs:
         producer = graph.producer_of(ref)
         if producer is None:
-            # external (seeded) input: satisfied if it exists in the store
             if not _exists(store, ref):
                 return False
         else:
-            # internal input: producer must be done and its artifact accepted
             if producer.status != DONE or ref not in accepted:
                 return False
     return True
@@ -128,11 +241,12 @@ def _ready(
 def run_graph(
     graph: SessionGraph,
     artifacts: ArtifactStore,
-    llm: LLMClient,
+    llm: LLMClient | None = None,
     *,
     acceptor: Acceptor = accept_all,
     max_attempts: int = 1,
     sessions: SessionStore | None = None,
+    executor: Executor | None = None,
 ) -> GraphRunResult:
     """Run the graph to a fixed point: run ready nodes until none remain ready."""
     accepted: set[str] = set()
@@ -150,16 +264,16 @@ def run_graph(
             ok = False
             while node.attempts < max_attempts:
                 node.attempts += 1
-                run_session(artifacts, llm, node.session, sessions)
-                produced = artifacts.resolve(node.output_ref)
-                if acceptor(produced):
+                ran = node.work.run(
+                    artifacts, llm=llm, executor=executor, sessions=sessions
+                )
+                if ran and node.work.accepted(artifacts, acceptor):
                     accepted.add(node.output_ref)
                     ok = True
                     break
             node.status = DONE if ok else FAILED
             progressed = True
 
-    # Anything not done/failed could never become ready: it is blocked.
     for node in graph.nodes.values():
         if node.status not in (DONE, FAILED):
             node.status = BLOCKED
