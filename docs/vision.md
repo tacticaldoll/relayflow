@@ -148,26 +148,37 @@ Synthesis Session  → Report Artifact（引用 Findings，不重讀原文）
 
 **前提**：V0 已證明 relay 機制可靠。V1 才開始驗證「relay 能驅動真實 worker」。
 
-### 執行基底：worklane（V1 採用，V0 不綁）
+### 執行基底：worklane（已延後 — 2026-06-19 決定）
 
-[worklane](https://github.com/tacticaldoll/worklane)（Rust，typed background job runner：
-broker / reserve-ack-retry / dead-letter / lane / bounded concurrency / lease /
-scheduled enqueue / 可 inspect-replay）定為 RelayFlow V1 的**執行基底**，不自行重寫。
+原規劃把 [worklane](https://github.com/tacticaldoll/worklane)（Rust typed background
+job runner）當執行基底。實際讀過 worklane 原始碼後**推翻了原本的整合假設**：
 
-**邊界（不可違反）**：
+> worklane 的 CLI `wl` 是 **operator-only**（只有 `dead-letters list|requeue|purge`
+> 與 `stats`）——**沒有 `wl enqueue/reserve/ack`**。enqueue/reserve/ack 全是 async
+> Rust trait method，且 worklane 無 server/daemon/socket。它是要被 **Rust service
+> embed** 的 library。所以「Python shell `wl` 當 broker」這條路不存在。
 
-> worklane 只負責**派發 / 重試 / lease / 並發**這類執行細節。
-> 「有哪些工作、做完沒、artifact 是否驗收」永遠由 **Session Graph + Artifact** 持有。
-> 一個 worklane job 是薄信封，只攜帶 `session_id` / node id；job 自身狀態是 ephemeral
-> 執行態，**不得**編碼業務真相，否則會與 graph 真相來源漂移、replay 對不上。
+真實整合只能寫 Rust：一個 embed worklane 的 host（handler shell `relayflow run-node`，
+並自造一個 enqueue 入口，因為 worklane 沒有外部 enqueue 通道）。範圍遠大於原想。
 
-對應：lane→worker 路由與 RF-035 排程；retry+dead-letter→配 RF-034 驗收（爛 artifact
-→ retry/dead-letter）；scheduled/delayed→RF-062 approval park+timeout；
-enqueue-from-event→RF-060/061。
+**決定：延後 worklane。** 理由：
 
-**V0 不接 worklane**（線性 loop，無 fan-out / async worker / approval parking）。
-RelayFlow 與 worklane 的**語言與程序邊界**（Python 為主+`wl`/RPC，或整體改 Rust）
-延到 V0→V1 邊界、真的要做 graph 排程時再定。
+- 它獨有、而我們還沒有的只有「跨程序/跨機器分散」與「Postgres/Redis 後端」——
+  RelayFlow 現階段命題用不到。
+- durability / retry-as-jobs / parked approval 已由
+  [`durable-scheduler`](../openspec/specs/durable-scheduler/spec.md)（純 Python +
+  SQLite，change `durable-graph-scheduler`）交付。
+- 花一個 Rust 橋接服務去拿「還用不到的東西」＝提前上基底，違反一路的紀律。
+
+**重啟條件**：真的需要把 worker 分散到多程序/多機器時再回來，且屆時走 Rust 橋接 host
+（或整體改 Rust）有真實需求撐腰。屆時 [`Broker` 契約](../src/relayflow/broker.py)
+已就位——換的是後端實作，不是上層語義。
+
+**保留的設計不變式**（未來任何 broker 後端都適用）：
+
+> 執行基底只負責派發 / 重試 / lease / 並發；「有哪些工作、做完沒、artifact 是否驗收」
+> 永遠由 **Session Graph + Artifact** 持有。job 是薄信封（只帶 `node_id`），狀態 ephemeral，
+> 不得編碼業務真相。冪等靠 CAS-claim + 真相在 artifact。
 
 ### Epic 4 — Session Graph（差異化）
 
