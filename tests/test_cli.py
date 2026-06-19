@@ -38,3 +38,16 @@ def test_inspect_unknown_session_exits_nonzero(tmp_path, capsys):
     assert main(["inspect", "nope", "--db", db]) == 1
     err = capsys.readouterr().err
     assert "session not found" in err
+
+
+def test_graph_command_runs_demo_graph(capsys):
+    assert main(["graph", "--budget", "60"]) == 0
+    out = capsys.readouterr().out
+    assert "synthesis [done]" in out
+
+
+def test_execute_command_runs_demo_executor(capsys):
+    assert main(["execute"]) == 0
+    out = capsys.readouterr().out
+    assert "patch=artifact://exec/addgreet.patch" in out
+    assert "status=passed" in out

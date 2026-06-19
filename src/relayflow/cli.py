@@ -15,7 +15,13 @@ import sys
 
 from relayflow import __version__
 from relayflow.artifact import ArtifactStore
-from relayflow.demo import MarkerRelayTask, build_marker_graph, marker_responder
+from relayflow.demo import (
+    MarkerRelayTask,
+    build_marker_graph,
+    demo_execution,
+    marker_responder,
+)
+from relayflow.executor import run_execution
 from relayflow.falsification import run_experiment_matrix, run_task
 from relayflow.firewall import Budget
 from relayflow.graph import run_graph, visualize
@@ -58,6 +64,9 @@ def build_parser() -> argparse.ArgumentParser:
     graph = sub.add_parser("graph", help="run the demo session graph and visualize")
     graph.add_argument("--budget", type=int, default=60)
     graph.set_defaults(func=cmd_graph)
+
+    execute = sub.add_parser("execute", help="run the demo executor (patch + tests)")
+    execute.set_defaults(func=cmd_execute)
 
     return parser
 
@@ -129,6 +138,16 @@ def cmd_graph(args: argparse.Namespace) -> int:
     if result.blocked:
         print(f"blocked={result.blocked}")
     return 0 if not result.failed and not result.blocked else 1
+
+
+def cmd_execute(args: argparse.Namespace) -> int:
+    artifacts = ArtifactStore()
+    executor, spec = demo_execution()
+    patch_ref, test_ref = run_execution(artifacts, executor, spec)
+    status = artifacts.resolve(test_ref).metadata["status"]
+    print(f"patch={patch_ref}")
+    print(f"test={test_ref} status={status}")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:

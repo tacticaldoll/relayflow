@@ -17,6 +17,7 @@ import re
 from dataclasses import dataclass
 
 from relayflow.artifact import Artifact, ArtifactStore
+from relayflow.executor import ExecResult, ExecSpec, MockExecutor
 from relayflow.firewall import Budget, ContextPolicy
 from relayflow.graph import SessionGraph
 from relayflow.session import SessionContext, SessionInput, SessionResult
@@ -150,3 +151,26 @@ def build_marker_graph(task: MarkerRelayTask, budget: Budget) -> SessionGraph:
     for step in task.graph_steps(budget):
         graph.add_node(step)
     return graph
+
+
+def demo_execution() -> tuple[MockExecutor, ExecSpec]:
+    """A deterministic in-scope execution: add a function under ``src/``."""
+    spec = ExecSpec(
+        id="addgreet",
+        scope="exec",
+        instruction="add a greet() function to src/greeter.py",
+        allowed_paths=["src/"],
+    )
+    result = ExecResult(
+        patch=(
+            "--- a/src/greeter.py\n"
+            "+++ b/src/greeter.py\n"
+            "+def greet():\n"
+            "+    return 'hello'\n"
+        ),
+        summary="add greet() to src/greeter.py",
+        tests="test_greet ... ok",
+        status="passed",
+        files=["src/greeter.py"],
+    )
+    return MockExecutor(result=result), spec
