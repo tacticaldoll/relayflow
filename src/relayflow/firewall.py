@@ -32,13 +32,24 @@ class Budget:
     max_tokens: int | None = None
 
 
+def relevance_score(content: str, query_terms: set[str]) -> int:
+    """Lexical score: how many distinct query terms appear in ``content``.
+
+    Deterministic and dependency-free — NOT semantic. Semantic/embedding-based
+    relevance is a V2 concern.
+    """
+    tokens = {t.lower() for t in content.split()}
+    return len(tokens & query_terms)
+
+
 @dataclass(frozen=True)
 class ContextPolicy:
-    """Selection policy. ``kind`` is ``"latest"`` or ``"tagged"``."""
+    """Selection policy. ``kind`` is ``"latest"``, ``"tagged"``, or ``"relevant"``."""
 
     kind: str = "latest"
     limit: int | None = None
     tag: str | None = None
+    query: str | None = None
 
     def select(self, store: ArtifactStore, scope: str) -> list[Artifact]:
         if self.kind == "latest":
@@ -47,7 +58,22 @@ class ContextPolicy:
             if self.tag is None:
                 raise ValueError("tagged policy requires a tag")
             return store.tagged(scope, self.tag)
+        if self.kind == "relevant":
+            if self.query is None:
+                raise ValueError("relevant policy requires a query")
+            return self._select_relevant(store, scope)
         raise ValueError(f"unknown context policy: {self.kind!r}")
+
+    def _select_relevant(self, store: ArtifactStore, scope: str) -> list[Artifact]:
+        query_terms = {t.lower() for t in (self.query or "").split()}
+        # store.latest is recency-desc; a stable sort by score keeps recency as
+        # the tiebreak for equal scores.
+        candidates = store.latest(scope)
+        scored = [(relevance_score(a.content, query_terms), a) for a in candidates]
+        scored = [(s, a) for s, a in scored if s > 0]
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+        ranked = [a for _, a in scored]
+        return ranked[: self.limit] if self.limit is not None else ranked
 
 
 @dataclass
