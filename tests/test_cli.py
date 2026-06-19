@@ -65,3 +65,10 @@ def test_approve_command_runs_approval_graph(capsys):
     out = capsys.readouterr().out
     assert "deploy [done]" in out
     assert "approval_required" in out
+
+
+def test_run_node_command_is_idempotent(capsys):
+    assert main(["run-node", "--node", "extract0"]) == 0
+    out = capsys.readouterr().out
+    assert "first=done" in out
+    assert "second=noop" in out

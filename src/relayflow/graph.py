@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from relayflow.artifact import Artifact, ArtifactNotFound, ArtifactStore
+from relayflow.broker import Broker, InMemoryBroker
 from relayflow.events import (
     APPROVAL_DENIED,
     APPROVAL_GRANTED,
@@ -265,6 +266,91 @@ def _emit(events: EventBus | None, event_type: str, node_id: str) -> None:
         events.emit(Event(type=event_type, payload={"node": node_id}))
 
 
+def drive(
+    graph: SessionGraph,
+    artifacts: ArtifactStore,
+    broker: Broker,
+    *,
+    llm: LLMClient | None = None,
+    acceptor: Acceptor = accept_all,
+    max_attempts: int = 1,
+    sessions: SessionStore | None = None,
+    executor: Executor | None = None,
+    events: EventBus | None = None,
+    approver: Approver | None = None,
+) -> GraphRunResult:
+    """Drive a graph over a broker: enqueue ready nodes, reserve, run, repeat.
+
+    Readiness stays a projection of graph + artifact state. A ready confirmation
+    node is parked (not enqueued) until approved. A rejected node is retried via
+    the broker up to ``max_attempts``, then dead-lettered and marked ``failed``.
+    """
+    accepted: set[str] = set()
+    inflight: set[str] = set()
+
+    def claim(node: GraphNode) -> bool:
+        if node.status == PENDING:
+            node.status = RUNNING
+            return True
+        return False
+
+    def try_enqueue(node: GraphNode) -> None:
+        if node.status != PENDING or node.id in inflight:
+            return
+        if not _ready(graph, node, artifacts, accepted):
+            return
+        if node.requires_confirmation:
+            _emit(events, APPROVAL_REQUIRED, node.id)
+            if approver is None or not approver(node):
+                _emit(events, APPROVAL_DENIED, node.id)
+                node.status = BLOCKED
+                _emit(events, NODE_BLOCKED, node.id)
+                return
+            _emit(events, APPROVAL_GRANTED, node.id)
+        broker.enqueue({"node_id": node.id}, unique_key=node.id)
+        inflight.add(node.id)
+
+    for node in graph.nodes.values():
+        try_enqueue(node)
+
+    while True:
+        job = broker.reserve()
+        if job is None:
+            break
+        node = graph.nodes[job.payload["node_id"]]
+        if not claim(node):
+            broker.ack(job)
+            continue
+        node.attempts += 1
+        ran = node.work.run(artifacts, llm=llm, executor=executor, sessions=sessions)
+        if ran and node.work.accepted(artifacts, acceptor):
+            node.status = DONE
+            accepted.add(node.output_ref)
+            _emit(events, NODE_DONE, node.id)
+            broker.ack(job)
+        elif node.attempts < max_attempts:
+            node.status = PENDING  # claimable again for the retry delivery
+            broker.retry(job)
+        else:
+            node.status = FAILED
+            _emit(events, NODE_FAILED, node.id)
+            broker.dead_letter(job)
+        for other in graph.nodes.values():
+            try_enqueue(other)
+
+    for node in graph.nodes.values():
+        if node.status not in (DONE, FAILED, BLOCKED):
+            node.status = BLOCKED
+            _emit(events, NODE_BLOCKED, node.id)
+
+    return GraphRunResult(
+        statuses={n.id: n.status for n in graph.nodes.values()},
+        completed=[n.id for n in graph.nodes.values() if n.status == DONE],
+        failed=[n.id for n in graph.nodes.values() if n.status == FAILED],
+        blocked=[n.id for n in graph.nodes.values() if n.status == BLOCKED],
+    )
+
+
 def run_graph(
     graph: SessionGraph,
     artifacts: ArtifactStore,
@@ -277,55 +363,22 @@ def run_graph(
     events: EventBus | None = None,
     approver: Approver | None = None,
 ) -> GraphRunResult:
-    """Run the graph to a fixed point: run ready nodes until none remain ready."""
-    accepted: set[str] = set()
+    """Synchronous run: drive the graph over an in-memory broker to a fixed point.
 
-    progressed = True
-    while progressed:
-        progressed = False
-        for node in graph.nodes.values():
-            if node.status in (DONE, FAILED, BLOCKED):
-                continue
-            if not _ready(graph, node, artifacts, accepted):
-                continue
-
-            # Human approval gate: a confirmation node runs only if approved.
-            if node.requires_confirmation:
-                _emit(events, APPROVAL_REQUIRED, node.id)
-                granted = approver(node) if approver is not None else False
-                if not granted:
-                    _emit(events, APPROVAL_DENIED, node.id)
-                    node.status = BLOCKED
-                    _emit(events, NODE_BLOCKED, node.id)
-                    progressed = True
-                    continue
-                _emit(events, APPROVAL_GRANTED, node.id)
-
-            node.status = RUNNING
-            ok = False
-            while node.attempts < max_attempts:
-                node.attempts += 1
-                ran = node.work.run(
-                    artifacts, llm=llm, executor=executor, sessions=sessions
-                )
-                if ran and node.work.accepted(artifacts, acceptor):
-                    accepted.add(node.output_ref)
-                    ok = True
-                    break
-            node.status = DONE if ok else FAILED
-            _emit(events, NODE_DONE if ok else NODE_FAILED, node.id)
-            progressed = True
-
-    for node in graph.nodes.values():
-        if node.status not in (DONE, FAILED, BLOCKED):
-            node.status = BLOCKED
-            _emit(events, NODE_BLOCKED, node.id)
-
-    return GraphRunResult(
-        statuses={n.id: n.status for n in graph.nodes.values()},
-        completed=[n.id for n in graph.nodes.values() if n.status == DONE],
-        failed=[n.id for n in graph.nodes.values() if n.status == FAILED],
-        blocked=[n.id for n in graph.nodes.values() if n.status == BLOCKED],
+    This is the shared path — the same ``drive`` loop a durable broker uses, with
+    an in-memory broker standing in for the queue.
+    """
+    return drive(
+        graph,
+        artifacts,
+        InMemoryBroker(),
+        llm=llm,
+        acceptor=acceptor,
+        max_attempts=max_attempts,
+        sessions=sessions,
+        executor=executor,
+        events=events,
+        approver=approver,
     )
 
 

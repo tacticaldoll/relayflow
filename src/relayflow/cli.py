@@ -26,6 +26,7 @@ from relayflow.demo import (
 )
 from relayflow.events import InMemoryBus
 from relayflow.executor import run_execution
+from relayflow.graphstore import GraphStore, run_node
 from relayflow.falsification import run_experiment_matrix, run_task
 from relayflow.firewall import Budget
 from relayflow.graph import run_graph, visualize
@@ -77,6 +78,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     approve = sub.add_parser("approve", help="run an approval-gated graph + events")
     approve.set_defaults(func=cmd_approve)
+
+    run_node_p = sub.add_parser(
+        "run-node", help="idempotently run one node of a persisted demo graph"
+    )
+    run_node_p.add_argument("--node", default="extract0")
+    run_node_p.add_argument("--budget", type=int, default=60)
+    run_node_p.set_defaults(func=cmd_run_node)
 
     return parser
 
@@ -177,6 +185,23 @@ def cmd_approve(args: argparse.Namespace) -> int:
     print(f"events: {' '.join(bus.types())}")
     print(f"completed={result.completed}")
     return 0 if not result.failed and not result.blocked else 1
+
+
+def cmd_run_node(args: argparse.Namespace) -> int:
+    store = ArtifactStore()
+    gstore = GraphStore()
+    task = MarkerRelayTask()
+    task.setup(store)
+    graph = build_marker_graph(task, Budget(max_tokens=args.budget))
+    gstore.save_graph("demo", graph)
+    first = run_node(
+        gstore, "demo", args.node, store, llm=MockLLM(responder=marker_responder)
+    )
+    second = run_node(
+        gstore, "demo", args.node, store, llm=MockLLM(responder=marker_responder)
+    )
+    print(f"node={args.node} first={first} second={second}")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
