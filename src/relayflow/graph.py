@@ -66,6 +66,9 @@ class NodeWork(Protocol):
     @property
     def output_ref(self) -> str: ...
 
+    @property
+    def kind(self) -> str: ...
+
     def run(
         self,
         store: ArtifactStore,
@@ -83,6 +86,8 @@ class NodeWork(Protocol):
 @dataclass
 class SessionWork:
     session: SessionInput
+
+    kind = "session"
 
     @property
     def id(self) -> str:
@@ -113,8 +118,10 @@ class SessionWork:
 @dataclass
 class ExecutionWork:
     spec: ExecSpec
-    executor: Executor
+    executor: Executor | None
     deps: list[str]
+
+    kind = "execution"
 
     @property
     def id(self) -> str:
@@ -383,11 +390,18 @@ def run_graph(
 
 
 def visualize(graph: SessionGraph) -> str:
-    """Render the graph as readable text: nodes with status, then edges."""
-    lines = ["nodes:"]
+    """Render the graph as readable text: a status summary, nodes (with kind),
+    then edges annotated with the artifact each carries."""
+    counts: dict[str, int] = {}
     for node in graph.nodes.values():
-        lines.append(f"  {node.id} [{node.status}]")
+        counts[node.status] = counts.get(node.status, 0) + 1
+    summary = ", ".join(f"{k}={v}" for k, v in sorted(counts.items()))
+
+    lines = [f"summary: {len(graph.nodes)} nodes ({summary})", "nodes:"]
+    for node in graph.nodes.values():
+        lines.append(f"  {node.id} [{node.status}] ({node.work.kind})")
     lines.append("edges:")
     for producer, consumer in graph.edges():
-        lines.append(f"  {producer} -> {consumer}")
+        ref = graph.nodes[producer].output_ref
+        lines.append(f"  {producer} -> {consumer}  [{ref}]")
     return "\n".join(lines)

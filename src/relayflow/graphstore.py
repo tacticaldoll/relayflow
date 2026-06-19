@@ -72,8 +72,8 @@ def _deserialize(
     if kind == "session":
         return SessionWork(session=_session_from_dict(spec))
     if kind == "execution":
-        if executor is None:
-            raise ValueError("loading an execution node requires an executor")
+        # executor may be None for read-only rendering (inspect); it is only
+        # required to actually run the node.
         return ExecutionWork(spec=ExecSpec(**spec), executor=executor, deps=deps)
     raise ValueError(f"unknown work kind {kind!r}")
 
@@ -139,6 +139,12 @@ class GraphStore:
                 requires_confirmation=bool(row["requires_confirmation"]),
             )
         return graph
+
+    def exists(self, graph_id: str) -> bool:
+        row = self._conn.execute(
+            "SELECT 1 FROM graph_nodes WHERE graph_id = ? LIMIT 1", (graph_id,)
+        ).fetchone()
+        return row is not None
 
     def get_status(self, graph_id: str, node_id: str) -> tuple[str, int]:
         row = self._conn.execute(

@@ -72,3 +72,20 @@ def test_run_node_command_is_idempotent(capsys):
     out = capsys.readouterr().out
     assert "first=done" in out
     assert "second=noop" in out
+
+
+def test_run_node_db_persists_and_inspect_graph_renders(tmp_path, capsys):
+    db = str(tmp_path / "g.db")
+    assert main(["run-node", "--node", "extract0", "--db", db]) == 0
+    capsys.readouterr()
+    assert main(["inspect", "demo", "--graph", "--db", db]) == 0
+    out = capsys.readouterr().out
+    assert "graph: demo" in out
+    assert "extract0 [done] (session)" in out
+    assert "extract0 -> synthesis" in out
+
+
+def test_inspect_unknown_graph_exits_nonzero(tmp_path, capsys):
+    db = str(tmp_path / "empty.db")
+    assert main(["inspect", "nope", "--graph", "--db", db]) == 1
+    assert "graph not found" in capsys.readouterr().err

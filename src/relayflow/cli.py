@@ -61,9 +61,12 @@ def build_parser() -> argparse.ArgumentParser:
     matrix.add_argument("--budget", type=int, default=60)
     matrix.set_defaults(func=cmd_matrix)
 
-    inspect = sub.add_parser("inspect", help="replay a persisted session trace")
-    inspect.add_argument("session_id")
+    inspect = sub.add_parser("inspect", help="replay a persisted session or graph")
+    inspect.add_argument("id", help="session id, or graph id with --graph")
     inspect.add_argument("--db", default=DEFAULT_DB)
+    inspect.add_argument(
+        "--graph", action="store_true", help="interpret id as a persisted graph id"
+    )
     inspect.set_defaults(func=cmd_inspect)
 
     graph = sub.add_parser("graph", help="run the demo session graph and visualize")
@@ -84,6 +87,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_node_p.add_argument("--node", default="extract0")
     run_node_p.add_argument("--budget", type=int, default=60)
+    run_node_p.add_argument(
+        "--db", help="persist durably to this file (else in-memory)"
+    )
     run_node_p.set_defaults(func=cmd_run_node)
 
     return parser
@@ -128,11 +134,21 @@ def cmd_matrix(args: argparse.Namespace) -> int:
 
 
 def cmd_inspect(args: argparse.Namespace) -> int:
+    if args.graph:
+        gstore = GraphStore(args.db)
+        if not gstore.exists(args.id):
+            print(f"graph not found: {args.id}", file=sys.stderr)
+            return 1
+        # read-only render; executor not needed, no model call
+        print(f"graph: {args.id}")
+        print(visualize(gstore.load_graph(args.id)))
+        return 0
+
     sessions = SessionStore(args.db)
     try:
-        record = sessions.get(args.session_id)
+        record = sessions.get(args.id)
     except SessionNotFound:
-        print(f"session not found: {args.session_id}", file=sys.stderr)
+        print(f"session not found: {args.id}", file=sys.stderr)
         return 1
     print(f"session: {record.id}")
     print(f"purpose: {record.input.get('purpose')}")
@@ -188,12 +204,18 @@ def cmd_approve(args: argparse.Namespace) -> int:
 
 
 def cmd_run_node(args: argparse.Namespace) -> int:
-    store = ArtifactStore()
-    gstore = GraphStore()
-    task = MarkerRelayTask()
-    task.setup(store)
-    graph = build_marker_graph(task, Budget(max_tokens=args.budget))
-    gstore.save_graph("demo", graph)
+    db = args.db or ":memory:"
+    if db != ":memory:":
+        _ensure_parent(db)
+    store = ArtifactStore(db)
+    gstore = GraphStore(db)
+    # Persist the demo graph only if absent, so statuses survive across runs.
+    if not gstore.exists("demo"):
+        task = MarkerRelayTask()
+        task.setup(store)
+        gstore.save_graph(
+            "demo", build_marker_graph(task, Budget(max_tokens=args.budget))
+        )
     first = run_node(
         gstore, "demo", args.node, store, llm=MockLLM(responder=marker_responder)
     )
