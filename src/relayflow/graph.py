@@ -19,9 +19,21 @@ from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from relayflow.artifact import Artifact, ArtifactNotFound, ArtifactStore
+from relayflow.events import (
+    APPROVAL_DENIED,
+    APPROVAL_GRANTED,
+    APPROVAL_REQUIRED,
+    NODE_BLOCKED,
+    NODE_DONE,
+    NODE_FAILED,
+    Event,
+    EventBus,
+)
 from relayflow.executor import ExecSpec, Executor, FileScopeViolation, run_execution
 from relayflow.llm import LLMClient
 from relayflow.session import SessionInput, SessionStore, run_session
+
+Approver = Callable[["GraphNode"], bool]
 
 PENDING = "pending"
 READY = "ready"
@@ -144,6 +156,7 @@ class GraphNode:
     work: NodeWork
     status: str = PENDING
     attempts: int = 0
+    requires_confirmation: bool = False
 
     @property
     def id(self) -> str:
@@ -172,19 +185,28 @@ class SessionGraph:
     def __init__(self) -> None:
         self.nodes: dict[str, GraphNode] = {}
 
-    def add_node(self, session: SessionInput) -> GraphNode:
-        return self._add(SessionWork(session=session))
+    def add_node(
+        self, session: SessionInput, *, requires_confirmation: bool = False
+    ) -> GraphNode:
+        return self._add(
+            SessionWork(session=session), requires_confirmation=requires_confirmation
+        )
 
     def add_execution(
         self,
         spec: ExecSpec,
         executor: Executor,
         deps: list[str] | None = None,
+        *,
+        requires_confirmation: bool = False,
     ) -> GraphNode:
-        return self._add(ExecutionWork(spec=spec, executor=executor, deps=deps or []))
+        return self._add(
+            ExecutionWork(spec=spec, executor=executor, deps=deps or []),
+            requires_confirmation=requires_confirmation,
+        )
 
-    def _add(self, work: NodeWork) -> GraphNode:
-        node = GraphNode(work=work)
+    def _add(self, work: NodeWork, *, requires_confirmation: bool = False) -> GraphNode:
+        node = GraphNode(work=work, requires_confirmation=requires_confirmation)
         self.nodes[node.id] = node
         return node
 
@@ -238,6 +260,11 @@ def _ready(
     return True
 
 
+def _emit(events: EventBus | None, event_type: str, node_id: str) -> None:
+    if events is not None:
+        events.emit(Event(type=event_type, payload={"node": node_id}))
+
+
 def run_graph(
     graph: SessionGraph,
     artifacts: ArtifactStore,
@@ -247,6 +274,8 @@ def run_graph(
     max_attempts: int = 1,
     sessions: SessionStore | None = None,
     executor: Executor | None = None,
+    events: EventBus | None = None,
+    approver: Approver | None = None,
 ) -> GraphRunResult:
     """Run the graph to a fixed point: run ready nodes until none remain ready."""
     accepted: set[str] = set()
@@ -255,10 +284,22 @@ def run_graph(
     while progressed:
         progressed = False
         for node in graph.nodes.values():
-            if node.status in (DONE, FAILED):
+            if node.status in (DONE, FAILED, BLOCKED):
                 continue
             if not _ready(graph, node, artifacts, accepted):
                 continue
+
+            # Human approval gate: a confirmation node runs only if approved.
+            if node.requires_confirmation:
+                _emit(events, APPROVAL_REQUIRED, node.id)
+                granted = approver(node) if approver is not None else False
+                if not granted:
+                    _emit(events, APPROVAL_DENIED, node.id)
+                    node.status = BLOCKED
+                    _emit(events, NODE_BLOCKED, node.id)
+                    progressed = True
+                    continue
+                _emit(events, APPROVAL_GRANTED, node.id)
 
             node.status = RUNNING
             ok = False
@@ -272,11 +313,13 @@ def run_graph(
                     ok = True
                     break
             node.status = DONE if ok else FAILED
+            _emit(events, NODE_DONE if ok else NODE_FAILED, node.id)
             progressed = True
 
     for node in graph.nodes.values():
-        if node.status not in (DONE, FAILED):
+        if node.status not in (DONE, FAILED, BLOCKED):
             node.status = BLOCKED
+            _emit(events, NODE_BLOCKED, node.id)
 
     return GraphRunResult(
         statuses={n.id: n.status for n in graph.nodes.values()},

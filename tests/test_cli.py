@@ -58,3 +58,10 @@ def test_execute_command_runs_demo_executor(capsys):
     out = capsys.readouterr().out
     assert "patch=artifact://exec/addgreet.patch" in out
     assert "status=passed" in out
+
+
+def test_approve_command_runs_approval_graph(capsys):
+    assert main(["approve"]) == 0
+    out = capsys.readouterr().out
+    assert "deploy [done]" in out
+    assert "approval_required" in out

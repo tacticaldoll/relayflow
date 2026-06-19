@@ -179,6 +179,38 @@ def build_mixed_graph() -> SessionGraph:
     return graph
 
 
+def build_approval_graph() -> SessionGraph:
+    """A graph with a confirmation-gated execution node: plan -> deploy(approval)."""
+    graph = SessionGraph()
+    graph.add_node(
+        SessionInput(
+            id="plan",
+            purpose="plan the deploy",
+            context=SessionContext(scope="appr"),
+            budget=Budget(max_tokens=100),
+        )
+    )
+    executor, _ = demo_execution()
+    spec = ExecSpec(
+        id="deploy",
+        scope="appr",
+        instruction="deploy the change under src/",
+        allowed_paths=["src/"],
+    )
+    graph.add_execution(
+        spec,
+        executor,
+        deps=["artifact://appr/plan.out"],
+        requires_confirmation=True,
+    )
+    return graph
+
+
+def auto_approver(_node) -> bool:
+    """Demo approver that grants every confirmation."""
+    return True
+
+
 def demo_execution() -> tuple[MockExecutor, ExecSpec]:
     """A deterministic in-scope execution: add a function under ``src/``."""
     spec = ExecSpec(

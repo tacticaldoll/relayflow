@@ -17,11 +17,14 @@ from relayflow import __version__
 from relayflow.artifact import ArtifactStore
 from relayflow.demo import (
     MarkerRelayTask,
+    auto_approver,
+    build_approval_graph,
     build_marker_graph,
     build_mixed_graph,
     demo_execution,
     marker_responder,
 )
+from relayflow.events import InMemoryBus
 from relayflow.executor import run_execution
 from relayflow.falsification import run_experiment_matrix, run_task
 from relayflow.firewall import Budget
@@ -71,6 +74,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     execute = sub.add_parser("execute", help="run the demo executor (patch + tests)")
     execute.set_defaults(func=cmd_execute)
+
+    approve = sub.add_parser("approve", help="run an approval-gated graph + events")
+    approve.set_defaults(func=cmd_approve)
 
     return parser
 
@@ -155,6 +161,22 @@ def cmd_execute(args: argparse.Namespace) -> int:
     print(f"patch={patch_ref}")
     print(f"test={test_ref} status={status}")
     return 0
+
+
+def cmd_approve(args: argparse.Namespace) -> int:
+    bus = InMemoryBus()
+    graph = build_approval_graph()
+    result = run_graph(
+        graph,
+        ArtifactStore(),
+        MockLLM(responder=marker_responder),
+        events=bus,
+        approver=auto_approver,
+    )
+    print(visualize(graph))
+    print(f"events: {' '.join(bus.types())}")
+    print(f"completed={result.completed}")
+    return 0 if not result.failed and not result.blocked else 1
 
 
 def main(argv: list[str] | None = None) -> int:
